@@ -253,7 +253,7 @@ class PrivateNetwork:
             print("\t合约审计成功")
 
             d[ethIp] = {"broker": broker_addr, "transfer": transfer_addr, "id": "ethappchain{}".format(i + 1)}
-        json.dump(d, open("addr.json", "w"))
+        json.dump(d, open("addr_{}.json".format(self.namespace), "w"), indent=4)
 
 
     def create_deployment_pier(self, pier):
@@ -287,47 +287,73 @@ class PrivateNetwork:
                 ethIps.append(ethIpList.pop())
 
             for j, ethIp in enumerate(ethIps):
-                config["pier"] = config["base"] + "{}{}".format(i, j)
-                cmd = "rm -rf {}".format(config["pier"])
+                mount_pier = osp.join(config["base"], "mount_pier{}{}".format(i, j))
+                cmd = "rm -rf {}".format(mount_pier)
                 os.system(cmd)
-                cmd = "cp -r {} {}".format(config['base'], config["pier"])
+                cmd = "mkdir -p {} && {} --repo={} init relay".format(mount_pier, config['pier'], mount_pier)
                 os.system(cmd)
-                addr_json = json.load(open("addr.json"))
+                cmd = "cp -r {} {} && cp -r {} {}".format(config['plugins'], osp.join(mount_pier, 'plugins'), config['ether'], osp.join(mount_pier, 'ether'))
+                os.system(cmd)
+                addr_json = json.load(open("addr_{}.json".format(self.namespace)))
                 addrs = [bitxhubIp + ':6001{}'.format(i) for i in range(1, 5)]
-                pier_toml = toml.load(osp.join(config["pier"], "pier.toml"))
+                pier_toml = toml.load(osp.join(mount_pier, "pier.toml"))
                 pier_toml['mode']['relay']['addrs'] = addrs
+                pier_toml['mode']['relay']['timeout_limit'] = "10s"
                 pier_toml['mode']['union']['addrs'] = addrs
                 pier_toml['appchain']['id'] = addr_json[ethIp]["id"]
+                pier_toml['appchain']['plugin'] = "eth-client"
+                pier_toml['appchain']['config'] = "ether"
                 # print(toml.dumps(pier_toml))
-                toml.dump(pier_toml, open(osp.join(config["pier"], "pier.toml"), "w"))
+                toml.dump(pier_toml, open(osp.join(mount_pier, "pier.toml"), "w"))
 
-                ethereum_toml = toml.load(osp.join(config["pier"], "ether/ethereum.toml"))
+                ethereum_toml = toml.load(osp.join(mount_pier, "ether/ethereum.toml"))
                 ethereum_toml['ether']['addr'] = "ws://{}:8546".format(ethIp)
                 ethereum_toml['ether']['contract_address'] = addr_json[ethIp]['broker']
-                toml.dump(ethereum_toml, open(osp.join(config["pier"], "ether/ethereum.toml"), "w"))
+                toml.dump(ethereum_toml, open(osp.join(mount_pier, "ether/ethereum.toml"), "w"))
 
-                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.11:{}".format(config['pier'], config['pier_temp_path'])
+                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.11:{}".format(mount_pier, config["base"])
                 print(cmd)
                 os.system(cmd)
-                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.5:{}".format(config['pier'], config['pier_temp_path'])
+                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.5:{}".format(mount_pier, config["base"])
                 print(cmd)
                 os.system(cmd)
 
                 body['metadata']['name'] = "pier-0-{}".format(j)
+
+                body['spec']['containers'][0]['volumeMounts'][0]['name'] = "pier-{}-{}".format(i, j)
+                body['spec']['containers'][0]['volumeMounts'][0]['mountPath'] = "/root/.pier"
+                body['spec']['volumes'][0]['name'] = "pier-{}-{}".format(i, j)
+                body['spec']['volumes'][0]['hostPath']['path'] = mount_pier
+                body['spec']['volumes'][0]['hostPath']['type'] = "Directory"
+
                 body['spec']['containers'][0]['name'] = "pier-0-{}".format(j)
-                body['spec']['containers'][0]['volumeMounts'][0]['name'] = "pier-0-{}-toml".format(j)
-                body['spec']['containers'][0]['volumeMounts'][1]['name'] = "pier-0-{}-ether".format(j)
-                body['spec']['containers'][0]['volumeMounts'][2]['name'] = "pier-0-{}-plugins".format(j)
-                body['spec']['volumes'][0]['name'] = "pier-0-{}-toml".format(j)
-                body['spec']['volumes'][0]['hostPath']['path'] = osp.join(config["pier"], "pier.toml")
-                body['spec']['volumes'][1]['name'] = "pier-0-{}-ether".format(j)
-                body['spec']['volumes'][1]['hostPath']['path'] = osp.join(config["pier"], "ether")
-                body['spec']['volumes'][2]['name'] = "pier-0-{}-plugins".format(j)
-                body['spec']['volumes'][2]['hostPath']['path'] = osp.join(config["pier"], "plugins")
+                # body['spec']['containers'][0]['volumeMounts'][0]['name'] = "pier-0-{}-toml".format(j)
+                # body['spec']['containers'][0]['volumeMounts'][1]['name'] = "pier-0-{}-ether".format(j)
+                # body['spec']['containers'][0]['volumeMounts'][2]['name'] = "pier-0-{}-plugins".format(j)
+                # body['spec']['volumes'][0]['name'] = "pier-0-{}-toml".format(j)
+                # body['spec']['volumes'][0]['hostPath']['path'] = osp.join(mount_pier, "pier.toml")
+                # body['spec']['volumes'][1]['name'] = "pier-0-{}-ether".format(j)
+                # body['spec']['volumes'][1]['hostPath']['path'] = osp.join(mount_pier, "ether")
+                # body['spec']['volumes'][2]['name'] = "pier-0-{}-plugins".format(j)
+                # body['spec']['volumes'][2]['hostPath']['path'] = osp.join(mount_pier, "plugins")
                 api_instance = client.CoreV1Api()
                 api_instance.create_namespaced_pod(self.namespace, body)
                 print("create namespaced pod {}:{}".format(bitxhubIp, ethIp))
             # self.create_deployment_by_path('k8s/deployment-pier.yaml')
+    
+    def register(self, configPath):
+        config = None
+        with open(configPath) as f:
+            config = json.load(f)
+        if config is None:
+            print(config, "open failed")
+            return
+        pierInfo = os.popen("kubectl get pods -n {} -o wide | grep pier".format(self.namespace)).read()
+        pierNameList = [pierItem.split()[0] for pierItem in pierInfo.split('\n') if pierItem != '']
+        for pierName in pierNameList:
+            cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(config["bitxhub"], pierName, pierName, self.namespace)
+            os.system(cmd)
+
 
 
 def main():
@@ -339,6 +365,7 @@ def main():
     group.add_argument('--delete', dest='delete', action='store_true', default=False)
     group.add_argument('--deploy', dest='deploy', action='store_true', default=False)
     group.add_argument('--pier', dest='pier', default="")
+    group.add_argument('--register', dest='register', default="")
     args = parser.parse_args()
 
     if args.light:
@@ -358,6 +385,8 @@ def main():
         n.create_deployment_pier(args.pier)
     elif args.deploy:
         n.deploy()
+    elif args.register != "":
+        n.register(args.register)
 
 
 if __name__ == '__main__':
