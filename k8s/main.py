@@ -253,7 +253,7 @@ class PrivateNetwork:
             print("\t合约审计成功")
 
             d[ethIp] = {"broker": broker_addr, "transfer": transfer_addr, "id": "ethappchain{}".format(i + 1)}
-        json.dump(d, open("addr_{}.json".format(self.namespace), "w"), indent=4)
+        json.dump(d, open("deploy_{}.json".format(self.namespace), "w"), indent=4)
 
 
     def create_deployment_pier(self, pier):
@@ -271,17 +271,23 @@ class PrivateNetwork:
         
         bitxhubInfo = os.popen("kubectl get pods -n {} -o wide | grep bitxhub".format(self.namespace)).read()
         bitxhubIpList = [bitxhubItem.split()[-4] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
+        bitxhubNameList = [bitxhubItem.split()[0] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
         print(bitxhubIpList)
+        print(bitxhubNameList)
 
         ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
         ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
+        ethNameList = [ethItem.split()[0] for ethItem in ethInfo.split('\n') if ethItem != '']
         print(ethIpList)
+        print(ethNameList)
 
+        pier_json = {}
         graph = config["graph"]
         for i in range(len(graph)):
             subGraph = graph[i]
             ethNum = subGraph["eth"]
             bitxhubIp = bitxhubIpList.pop()
+            bitxhubName = bitxhubNameList.pop()
             ethIps = []
             for j in range(ethNum):
                 ethIps.append(ethIpList.pop())
@@ -294,13 +300,13 @@ class PrivateNetwork:
                 os.system(cmd)
                 cmd = "cp -r {} {} && cp -r {} {}".format(config['plugins'], osp.join(mount_pier, 'plugins'), config['ether'], osp.join(mount_pier, 'ether'))
                 os.system(cmd)
-                addr_json = json.load(open("addr_{}.json".format(self.namespace)))
+                deploy_json = json.load(open("deploy_{}.json".format(self.namespace)))
                 addrs = [bitxhubIp + ':6001{}'.format(i) for i in range(1, 5)]
                 pier_toml = toml.load(osp.join(mount_pier, "pier.toml"))
                 pier_toml['mode']['relay']['addrs'] = addrs
                 pier_toml['mode']['relay']['timeout_limit'] = "10s"
                 pier_toml['mode']['union']['addrs'] = addrs
-                pier_toml['appchain']['id'] = addr_json[ethIp]["id"]
+                pier_toml['appchain']['id'] = deploy_json[ethIp]["id"]
                 pier_toml['appchain']['plugin'] = "eth-client"
                 pier_toml['appchain']['config'] = "ether"
                 # print(toml.dumps(pier_toml))
@@ -308,7 +314,7 @@ class PrivateNetwork:
 
                 ethereum_toml = toml.load(osp.join(mount_pier, "ether/ethereum.toml"))
                 ethereum_toml['ether']['addr'] = "ws://{}:8546".format(ethIp)
-                ethereum_toml['ether']['contract_address'] = addr_json[ethIp]['broker']
+                ethereum_toml['ether']['contract_address'] = deploy_json[ethIp]['broker']
                 toml.dump(ethereum_toml, open(osp.join(mount_pier, "ether/ethereum.toml"), "w"))
 
                 cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.11:{}".format(mount_pier, config["base"])
@@ -339,20 +345,96 @@ class PrivateNetwork:
                 api_instance = client.CoreV1Api()
                 api_instance.create_namespaced_pod(self.namespace, body)
                 print("create namespaced pod {}:{}".format(bitxhubIp, ethIp))
-            # self.create_deployment_by_path('k8s/deployment-pier.yaml')
+
+                pier_json["pier-{}-{}".format(i, j)] = {
+                    "bitxhubName": bitxhubName, 
+                    "appchain_id": deploy_json[ethIp]["id"], 
+                    "appchain_name": "eth{}{}".format(i, j),
+                    "appchain_type": "ETH",
+                    "appchain_ip": ethIp,
+                    }
+
+        json.dump(pier_json, open("pier_{}.json".format(self.namespace), "w"), indent=4)
     
     def register(self, configPath):
         config = None
         with open(configPath) as f:
             config = json.load(f)
         if config is None:
-            print(config, "open failed")
+            print(configPath, "open failed")
             return
+        bitxhub_path = config["bitxhub"]
+
+        pier = None
+        with open("pier_{}.json".format(self.namespace)) as f:
+            pier = json.load(f)
+        if pier is None:
+            print("pier_{}.json".format(self.namespace), "open failed")
+            return
+        
+        deploy = None
+        with open("deploy_{}.json".format(self.namespace)) as f:
+            deploy = json.load(f)
+        if deploy is None:
+            print("deploy_{}.json".format(self.namespace), "open failed")
+            return
+
         pierInfo = os.popen("kubectl get pods -n {} -o wide | grep pier".format(self.namespace)).read()
         pierNameList = [pierItem.split()[0] for pierItem in pierInfo.split('\n') if pierItem != '']
+        pierIpList = [pierItem.split()[0] for pierItem in pierInfo.split('\n') if pierItem != '']
+
+        def exec_cmd(pierName, cmd):
+            cmd = "kubectl exec -it {} -n {} -- {}".format(pierName, self.namespace, cmd)
+            print("\t", cmd)
+
+            return os.popen(cmd).read()
+            
         for pierName in pierNameList:
-            cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(config["bitxhub"], pierName, pierName, self.namespace)
+            print("handle pier", pierName)
+            cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(bitxhub_path, pierName, pierName, self.namespace)
+            print("\t", cmd)
             os.system(cmd)
+
+            bitxhubName = pier[pierName]['bitxhubName']
+
+            cmd = "bitxhub key show --path /root/.pier/key.json | grep address"
+            pierId = exec_cmd(pierName, cmd).split()[-1]
+
+            # 中继链转账
+            cmd = "bitxhub client transfer --key /root/bitxhub/scripts/build/node1/key.json --to {} --amount 100000000000000000".format(pierId)
+            print("\t", exec_cmd(bitxhubName, cmd))
+
+            cmd = 'pier --repo /root/.pier appchain register --appchain-id "{}" --name "{}"' \
+                  ' --type "{}" --trustroot /root/.pier/ether/ether.validators --broker' \
+                  ' {} --desc "desc" --master-rule "0x00000000000000000000000000000000000000a2"'\
+                  ' --rule-url "http://github.com" --admin {}'\
+                  ' --reason "reason"'.format(
+                        pier[pierName]['appchain_id'], 
+                        pier[pierName]['appchain_name'], 
+                        pier[pierName]['appchain_type'],
+                        deploy[pier[pierName]['appchain_ip']]['broker'],
+                        pierId
+                        )
+            print("\t", exec_cmd(pierName, cmd))
+
+            for nodeId in range(1, 4):
+                cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-0 --info approve --reason approve'.format(nodeId, pierId)
+                print("\t", exec_cmd(bitxhubName, cmd))
+            
+            cmd = 'pier --repo /root/.pier appchain service register --appchain-id "{}"' \
+                  ' --service-id "{}" --name "{}"'\
+                  ' --intro "" --type CallContract --permit "" --details "test"--reason "reason"'.format(
+                        pier[pierName]['appchain_id'], 
+                        deploy[pier[pierName]['appchain_ip']]['transfer'],
+                        "service-{}".format(pierName)
+                  )
+            print("\t", exec_cmd(pierName, cmd))
+
+            for nodeId in range(1, 4):
+                cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-1 --info approve --reason approve'.format(nodeId, pierId)
+                print("\t", exec_cmd(bitxhubName, cmd))
+
+
 
 
 

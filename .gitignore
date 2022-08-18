@@ -1,3 +1,4 @@
 bitxhub-in-one/
 shell/
 k8s/addr_*.json
+k8s/deploy_*.json
