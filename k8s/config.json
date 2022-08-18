@@ -1,10 +1,9 @@
 {
-    "pier": "/home/jyb/go/bin/pier",
-    "bitxhub": "/home/jyb/go/bin/bitxhub",
-    "base": "/home/jyb/",
-    "plugins": "/home/jyb/for_pier/plugins",
-    "appchain": "eth-client",
-    "ether": "/home/jyb/for_pier/ether",
+    "pier": "/home/jyb/go/bin/pier", 
+    "bitxhub": "/home/jyb/go/bin/bitxhub", 
+    "base": "/home/jyb/", 
+    "plugins": "/home/jyb/for_pier/plugins", 
+    "ether": "/home/jyb/for_pier/ether", 
     "graph": [
         {
             "eth": 2

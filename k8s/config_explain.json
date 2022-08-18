@@ -1,0 +1,12 @@
+{
+    "pier": "/home/jyb/go/bin/pier",  // pier可执行程序路径
+    "bitxhub": "/home/jyb/go/bin/bitxhub", // bitxhub可执行程序路径
+    "base": "/home/jyb/",   // k8s集群每个结点都需要有该目录
+    "plugins": "/home/jyb/for_pier/plugins", // 存放eth-client等路径
+    "ether": "/home/jyb/for_pier/ether", // ether网关插件
+    "graph": [  // 网络拓扑结构
+        {
+            "eth": 2
+        }
+    ]
+}
