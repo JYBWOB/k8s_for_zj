@@ -1,0 +1,10 @@
+{
+    "pier": "/home/jyb/for_pier",
+    "base": "/home/jyb/for_pier",
+    "pier_temp_path": "/home/jyb",
+    "graph": [
+        {
+            "eth": 2
+        }
+    ]
+}

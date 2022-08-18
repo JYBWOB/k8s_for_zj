@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: geth
+  template:
+    metadata:
+      labels:
+        app: geth
+    spec:
+      containers:
+      - name: geth
+        image: meshplus/ethereum:1.2.0
+        imagePullPolicy: IfNotPresent
+        command: ['geth']
+        args: ['--datadir', '/root/datadir', '--dev', '--ws', '--nousb', '--rpc', '--rpccorsdomain', 'https://remix.ethereum.org', '--rpcaddr', '0.0.0.0', '--rpcport', '8545', '--wsaddr', '0.0.0.0', '--rpcapi', 'eth,web3,personal,net,miner,admin,debug', '--allow-insecure-unlock']
+        ports:
+        - name: http
+          containerPort: 8545
+        - name: ws
+          containerPort: 8546
+        - name: cover
+          containerPort: 30303
+        # volumeMounts:
+        # - name: geth-datadir
+        #   mountPath: /opt/geth/geth
+        # - name: geth-config
+        #   mountPath: /opt/geth/config
+        ## - name: geth-secret
+        ##   mountPath: /opt/geth/secret
+        ##   readOnly: true
+      # volumes:
+      # - name: geth-datadir
+      #   emptyDir: {}
+      # - name: geth-config
+      #   configMap:
+      #     name: geth-config
+      #     defaultMode: 0755
+      ## - name: geth-secret
+      ##   secret:
+      ##     secretName: geth-secret

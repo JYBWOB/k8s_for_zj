@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ether-config
+data:
+  pier.toml: |-
+    title = "Pier"
+    [appchain]
+    config = "ether"
+    id = "ethappchain1"
+    plugin = "eth-client"
+
+    [ha]
+    mode = "single"
+
+    [log]
+    dir = "logs"
+    filename = "pier.log"
+    level = "info"
+    report_caller = false
+
+    [mode]
+    type = "relay"
+
+    [port]
+    http = 44544
+    pprof = 44555
+
+    [security]
+    access_cert = [ "node1.cert", "node2.cert", "node3.cert", "node4.cert",]
+    access_key = "node.priv"
+    common_name = "BitXHub"
+    enable_tls = false
+    tlsca = "certs/agency.cert"
+
+    [tss]
+    enable_tss = false
+
+    [log.module]
+    api_server = "info"
+    appchain_adapter = "info"
+    appchain_mgr = "info"
+    bxh_lite = "info"
+    direct_adapter = "info"
+    exchanger = "info"
+    executor = "info"
+    monitor = "info"
+    peer_mgr = "info"
+    router = "info"
+    rule_mgr = "info"
+    swarm = "info"
+    syncer = "info"
+    union_adapter = "info"
+
+    [mode.direct]
+    gas_limit = 100000000
+
+    [mode.relay]
+    addrs = [ "10.244.1.81:60011", "10.244.1.81:60012", "10.244.1.81:60013", "10.244.1.81:60014",]
+    bitxhub_id = "1356"
+    enable_offchain_transmission = false
+    quorum = 2
+    timeout_limit = "10s"
+
+    [mode.union]
+    addrs = [ "10.244.1.81:60011", "10.244.1.81:60012", "10.244.1.81:60013", "10.244.1.81:60014",]
+    providers = 1

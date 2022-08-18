@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pier
+spec:
+  containers:
+  - name: pier
+    image: jybwob/pier:v1.23.0
+    imagePullPolicy: IfNotPresent
+    command: ['pier', 'start']
+    # ports:
+    # - name: rpc
+    #   containerPort: 8545
+    volumeMounts:
+    # - name: geth-datadir
+    #   mountPath: /opt/geth/geth
+    - name: pier-toml1
+      mountPath: /root/.pier/pier.toml
+      readOnly: false
+    - name: pier-ether1
+      mountPath: /root/.pier/ether
+      readOnly: false
+    - name: pier-plugins1
+      mountPath: /root/.pier/plugins
+      readOnly: false
+
+  volumes: #定义一组挂载设备  
+    - name: toml1
+      hostPath:  
+        path: /root/.pier/pier.toml 
+        type: File
+    - name: pier-ether1
+      hostPath:  
+        path: /root/.pier/ether
+        type: Directory
+    - name: pier-plugins1
+      hostPath:  
+        path: /root/.pier/plugins
+        type: Directory
+        
+    # - name: ether-config
+    #   configMap:
+    #     name: ether-config
+    #     defaultMode: 0755
+      # volumes:
+      # - name: geth-datadir
+      #   emptyDir: {}
+      # - name: geth-config
+      #   configMap:
+      #     name: geth-config
+      #     defaultMode: 0755
+      ## - name: geth-secret
+      ##   secret:
+      ##     secretName: geth-secret

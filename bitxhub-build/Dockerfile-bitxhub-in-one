@@ -1,0 +1,21 @@
+FROM frolvlad/alpine-glibc:glibc-2.32
+
+# Copy over binaries from the builder
+COPY ./go/bin/bitxhub /usr/local/bin
+COPY ./go/bin/packr /usr/local/bin
+RUN mkdir -p /root/bitxhub
+COPY . /root/bitxhub/
+
+COPY ./build/wasm/lib/linux-amd64/libwasmer.so /lib
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib
+
+RUN apk add bash
+RUN apk add tmux
+
+WORKDIR /root/bitxhub/scripts
+
+EXPOSE 8881 60011 9091 53121 40011
+
+CMD ["bash", "cluster.sh"]
+
+

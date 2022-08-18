@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bitxhub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bitxhub
+  template:
+    metadata:
+      labels:
+        app: bitxhub
+    spec:
+      containers:
+      - name: bitxhub
+        image: jybwob/bitxhub-in-one:v4
+        imagePullPolicy: IfNotPresent
+        command: ['bash', 'cluster.sh']
+        ports:
+        - name: p1
+          containerPort: 60011
+        - name: p2
+          containerPort: 60012
+        - name: p3
+          containerPort: 60013
+        - name: p4
+          containerPort: 60014
+        # volumeMounts:
+        # - name: geth-datadir
+        #   mountPath: /opt/geth/geth
+        # - name: geth-config
+        #   mountPath: /opt/geth/config
+        ## - name: geth-secret
+        ##   mountPath: /opt/geth/secret
+        ##   readOnly: true
+      # volumes:
+      # - name: geth-datadir
+      #   emptyDir: {}
+      # - name: geth-config
+      #   configMap:
+      #     name: geth-config
+      #     defaultMode: 0755
+      ## - name: geth-secret
+      ##   secret:
+      ##     secretName: geth-secret
