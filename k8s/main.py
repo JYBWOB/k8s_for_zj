@@ -286,14 +286,12 @@ class PrivateNetwork:
             for j in range(ethNum):
                 ethIps.append(ethIpList.pop())
 
-            ## TODO:// j
-            config["pier"] = config["base"] + "{}{}".format(i, j)
-            cmd = "rm -rf {}".format(config["pier"])
-            os.system(cmd)
-            cmd = "cp -r {} {}".format(config['base'], config["pier"])
-            os.system(cmd)
-
             for j, ethIp in enumerate(ethIps):
+                config["pier"] = config["base"] + "{}{}".format(i, j)
+                cmd = "rm -rf {}".format(config["pier"])
+                os.system(cmd)
+                cmd = "cp -r {} {}".format(config['base'], config["pier"])
+                os.system(cmd)
                 addr_json = json.load(open("addr.json"))
                 addrs = [bitxhubIp + ':6001{}'.format(i) for i in range(1, 5)]
                 pier_toml = toml.load(osp.join(config["pier"], "pier.toml"))
