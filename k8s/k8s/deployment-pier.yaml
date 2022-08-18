@@ -12,12 +12,12 @@ spec:
     # - name: rpc
     #   containerPort: 8545
     volumeMounts:
-    - name: pier-toml1
-      mountPath: /root/.pier/pier.toml
+    - name: pier-0-0
+      mountPath: /root/.pier
       readOnly: false
 
   volumes: #定义一组挂载设备  
-    - name: pier-ether1
+    - name: pier-0-0
       hostPath:  
-        path: /root/.pier/ether
+        path: /root/.pier/
         type: Directory
