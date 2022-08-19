@@ -6,6 +6,9 @@
     "ether": "/home/jyb/for_pier/ether", 
     "graph": [
         {
+            "eth": 3
+        },
+        {
             "eth": 2
         }
     ]

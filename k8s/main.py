@@ -209,10 +209,39 @@ class PrivateNetwork:
 
         logger.debug('Created Deployment')
 
+    def create_deployment_by_path_replicas(self, path, replicas):
+        path = pathlib.Path(path)
+        with path.open() as f:
+            body = yaml.safe_load(f)
+
+        body["spec"]["replicas"] = replicas
+
+        api_instance = client.AppsV1Api()
+        api_instance.create_namespaced_deployment(self.namespace, body)
+
+        logger.debug('Created Deployment')
+
     def delete(self):
         # this will delete all objects under the namespace
         self.delete_namespace()
 
+    def create_by_config(self, config_path):
+        self.create_namespace()
+        self.create_service()
+
+        config = None
+        with open(config_path) as f:
+            config = json.load(f)
+        if config is None:
+            print(pier, "open failed")
+            return
+        graph = config["graph"]
+        bitxhub_replicas = len(graph)
+        eth_replicas = sum(p["eth"] for p in graph)
+
+        self.create_deployment_by_path_replicas('k8s/deployment-ether.yaml', eth_replicas)
+        self.create_deployment_by_path_replicas('k8s/deployment-bitxhub.yaml', bitxhub_replicas)
+        
     def create(self):
         # self.create_accounts()
         # # print address and private key
@@ -227,6 +256,7 @@ class PrivateNetwork:
         self.create_deployment_by_path('k8s/deployment-ether.yaml')
         self.create_deployment_by_path('k8s/deployment-bitxhub.yaml')
         # self.create_deployment_by_path('k8s/deployment-pier.yaml')
+
 
     def deploy(self):
         ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
@@ -282,6 +312,7 @@ class PrivateNetwork:
         print(ethNameList)
 
         pier_json = {}
+        graph_json = {}
         graph = config["graph"]
         for i in range(len(graph)):
             subGraph = graph[i]
@@ -289,8 +320,15 @@ class PrivateNetwork:
             bitxhubIp = bitxhubIpList.pop()
             bitxhubName = bitxhubNameList.pop()
             ethIps = []
+            ethNames = []
             for j in range(ethNum):
                 ethIps.append(ethIpList.pop())
+                ethNames.append(ethNameList.pop())
+            graph_json[bitxhubName] = {
+                "chainNameList": ethNames.copy(),
+                "chainIpList": ethIps.copy(),
+                "pierPrefixName": "pier-{}".format(i)
+            }
 
             for j, ethIp in enumerate(ethIps):
                 mount_pier = osp.join(config["base"], "mount_pier{}{}".format(i, j))
@@ -324,7 +362,7 @@ class PrivateNetwork:
                 print(cmd)
                 os.system(cmd)
 
-                body['metadata']['name'] = "pier-0-{}".format(j)
+                body['metadata']['name'] = "pier-{}-{}".format(i, j)
 
                 body['spec']['containers'][0]['volumeMounts'][0]['name'] = "pier-{}-{}".format(i, j)
                 body['spec']['containers'][0]['volumeMounts'][0]['mountPath'] = "/root/.pier"
@@ -355,6 +393,7 @@ class PrivateNetwork:
                     }
 
         json.dump(pier_json, open("pier_{}.json".format(self.namespace), "w"), indent=4)
+        json.dump(graph_json, open("graph_{}.json".format(self.namespace), "w"), indent=4)
     
     def register(self, configPath):
         config = None
@@ -391,7 +430,8 @@ class PrivateNetwork:
             
         for pierName in pierNameList:
             print("handle pier", pierName)
-            cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(bitxhub_path, pierName, pierName, self.namespace)
+            # cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(bitxhub_path, pierName, pierName, self.namespace)
+            cmd = "kubectl cp {} {}:/usr/local/bin -n {}".format(bitxhub_path, pierName, self.namespace)
             print("\t", cmd)
             os.system(cmd)
 
@@ -459,7 +499,7 @@ def main():
     
     if args.create:
         logger.info(f'Creating "{args.name}"')
-        n.create()
+        n.create_by_config("config.json")
     elif args.delete:
         logger.info(f'Deleting "{args.name}"')
         n.delete()
