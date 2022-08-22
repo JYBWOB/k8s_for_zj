@@ -2,6 +2,7 @@
 
 set -e
 
+BITXHUB_ID=$1
 CURRENT_PATH=$(pwd)
 PROJECT_PATH=$(dirname "${CURRENT_PATH}")
 CONFIG_PATH=${PROJECT_PATH}/config
@@ -50,6 +51,7 @@ function prepare() {
     x_replace "s/53121/5312${i}/g" "${bitxhubConfig}"
     x_replace "s/40011/4001${i}/g" "${bitxhubConfig}"
     x_replace "s/8881/888${i}/g" "${bitxhubConfig}"
+    x_replace "s/1313/$BITXHUB_ID/g" "${bitxhubConfig}"
     x_replace "1s/1/${i}/" "${networkConfig}"
   done
 }
