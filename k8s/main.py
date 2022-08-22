@@ -311,6 +311,10 @@ class PrivateNetwork:
         print(ethIpList)
         print(ethNameList)
 
+        nodeInfo = os.popen("kubectl get nodes -o wide").read()
+        nodeIpList = [nodeItem.split()[5] for nodeItem in nodeInfo.split('\n') if nodeItem != '' and "Ready" in nodeItem]
+        print(nodeIpList)
+
         pier_json = {}
         graph_json = {}
         graph = config["graph"]
@@ -355,12 +359,12 @@ class PrivateNetwork:
                 ethereum_toml['ether']['contract_address'] = deploy_json[ethIp]['broker']
                 toml.dump(ethereum_toml, open(osp.join(mount_pier, "ether/ethereum.toml"), "w"))
 
-                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.11:{}".format(mount_pier, config["base"])
-                print(cmd)
-                os.system(cmd)
-                cmd = "sshpass -p asdsaads. scp -r {} jyb@10.206.0.5:{}".format(mount_pier, config["base"])
-                print(cmd)
-                os.system(cmd)
+                for nodeIp in nodeIpList:
+                    if nodeIp == "10.206.0.7":
+                        continue
+                    cmd = "sshpass -p {} scp -r {} {}@{}:{}".format(config["passwd"], mount_pier, config["user"], nodeIp, config["base"])
+                    print(cmd)
+                    os.system(cmd)
 
                 body['metadata']['name'] = "pier-{}-{}".format(i, j)
 

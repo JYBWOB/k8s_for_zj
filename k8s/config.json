@@ -2,6 +2,8 @@
     "pier": "/home/jyb/go/bin/pier", 
     "bitxhub": "/home/jyb/go/bin/bitxhub", 
     "base": "/home/jyb/", 
+    "user": "jyb", 
+    "passwd": "123", 
     "plugins": "/home/jyb/for_pier/plugins", 
     "ether": "/home/jyb/for_pier/ether", 
     "graph": [
