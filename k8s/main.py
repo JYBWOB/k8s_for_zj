@@ -260,10 +260,49 @@ class PrivateNetwork:
             d['bitxhub-{}'.format(i)] = {
                 'bitxhubId': '123{}'.format(i)
             }
+
+        import time 
+        while True:
+            # read bitxhub data from pods
+            bitxhubInfo = os.popen("kubectl get pods -n {} -o wide | grep bitxhub".format(self.namespace)).read()
+            bitxhubIpList = [bitxhubItem.split()[-4] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
+            bitxhubNameList = [bitxhubItem.split()[0] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
+            print(bitxhubIpList)
+            print(bitxhubNameList)
+            if "<none>" not in bitxhubIpList:
+                break
+            print("container starting...")
+            time.sleep(1)
+
+        while True:
+            ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
+            print(ethInfo)
+            ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
+            ethNameList = [ethItem.split()[0] for ethItem in ethInfo.split('\n') if ethItem != '']
+            print(ethIpList)
+            print(ethNameList)
+            if "<none>" not in bitxhubIpList:
+                break
+            print("container starting...")
+            time.sleep(1)
+
+
+        for i in range(bitxhub_replicas):
+            fetch = graph[i]["eth"]
+            ips = []
+            names = []
+            for j in range(fetch):
+                names.append(ethNameList.pop(0))
+                ips.append(ethIpList.pop(0))
+
+            d['bitxhub-{}'.format(i)]['chainNameList'] =  names
+            d['bitxhub-{}'.format(i)]['chainIpList'] =  ips
+            d['bitxhub-{}'.format(i)]['pierPrefixName'] =  "pier-{}".format(i)
+
         json.dump(d, open("graph_{}.json".format(self.namespace), "w"), indent=4)
 
 
-        
+
     def create(self):
         # self.create_accounts()
         # # print address and private key
@@ -281,30 +320,42 @@ class PrivateNetwork:
 
 
     def deploy(self):
-        ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
-        ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
+        # ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
+        # ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
+
+        # connect bitxhubId with ethereum when deploy broker contract
         d = {}
-        for i, ethIp in enumerate(ethIpList):
-            print("handle ip: ", ethIp)
-            cmd = 'goduck ether contract deploy --code-path $HOME/goduck/scripts/example/broker.sol --address http://{}:8545  "1356^ethappchain{}^["0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013","0x79a1215469FaB6f9c63c1816b45183AD3624bE34","0x97c8B516D19edBf575D72a172Af7F418BE498C37","0xc0Ff2e0b3189132D815b8eb325bE17285AC898f8"]^1^["0x20F7Fac801C5Fc3f7E20cFbADaA1CDb33d818Fa3"]^1"| grep 0x'.format(ethIp, i + 1)
-            broker_addr = os.popen(cmd).read()
-            if broker_addr == "":
-                print(cmd)
-                print(os.popen(cmd).read())
-                print("error command")
-                return
-            broker_addr = broker_addr.split()[-1]
-            print("\tbroker addr:", broker_addr)
+        graph_json = None
+        with open("graph_{}.json".format(self.namespace)) as f:
+            graph_json = json.load(f)
 
-            cmd = 'goduck ether contract deploy --address http://{}:8545  --code-path $HOME/goduck/scripts/example/transfer.sol {}| grep 0x'.format(ethIp, broker_addr)
-            transfer_addr = os.popen(cmd).read().split()[-1]
-            print("\ttransfer addr:", transfer_addr)
+        appchainId = 0
+        for bitxhubName, item in graph_json.items():
+            bitxhubId = item["bitxhubId"]
+            for ethIp in item["chainIpList"]:
+                print("handle ip: ", ethIp)
+                print("handle bitxhub_id: ", bitxhubId)
+                cmd = 'goduck ether contract deploy --code-path $HOME/goduck/scripts/example/broker.sol --address http://{}:8545  "{}^ethappchain{}^["0xc7F999b83Af6DF9e67d0a37Ee7e900bF38b3D013","0x79a1215469FaB6f9c63c1816b45183AD3624bE34","0x97c8B516D19edBf575D72a172Af7F418BE498C37","0xc0Ff2e0b3189132D815b8eb325bE17285AC898f8"]^1^["0x20F7Fac801C5Fc3f7E20cFbADaA1CDb33d818Fa3"]^1"| grep 0x'.format(ethIp, bitxhubId, appchainId)
+                broker_addr = os.popen(cmd).read()
+                if broker_addr == "":
+                    print(cmd)
+                    print(os.popen(cmd).read())
+                    print("error command")
+                    return
+                broker_addr = broker_addr.split()[-1]
+                print("\tbroker addr:", broker_addr)
 
-            cmd = 'goduck ether contract invoke --key-path $HOME/goduck/scripts/docker/quick_start/account.key --abi-path $HOME/goduck/scripts/example/broker.abi --address http://{}:8545 {} audit "{}^1"'.format(ethIp, broker_addr, transfer_addr)
-            os.popen(cmd).read()
-            print("\t合约审计成功")
+                cmd = 'goduck ether contract deploy --address http://{}:8545  --code-path $HOME/goduck/scripts/example/transfer.sol {}| grep 0x'.format(ethIp, broker_addr)
+                transfer_addr = os.popen(cmd).read().split()[-1]
+                print("\ttransfer addr:", transfer_addr)
 
-            d[ethIp] = {"broker": broker_addr, "transfer": transfer_addr, "id": "ethappchain{}".format(i + 1)}
+                cmd = 'goduck ether contract invoke --key-path $HOME/goduck/scripts/docker/quick_start/account.key --abi-path $HOME/goduck/scripts/example/broker.abi --address http://{}:8545 {} audit "{}^1"'.format(ethIp, broker_addr, transfer_addr)
+                os.popen(cmd).read()
+                print("\t合约审计成功")
+
+                d[ethIp] = {"broker": broker_addr, "transfer": transfer_addr, "id": "ethappchain{}".format(appchainId), "bitxhub_id": bitxhubId}
+                appchainId += 1
+
         json.dump(d, open("deploy_{}.json".format(self.namespace), "w"), indent=4)
 
 
