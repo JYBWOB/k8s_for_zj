@@ -240,7 +240,29 @@ class PrivateNetwork:
         eth_replicas = sum(p["eth"] for p in graph)
 
         self.create_deployment_by_path_replicas('k8s/deployment-ether.yaml', eth_replicas)
-        self.create_deployment_by_path_replicas('k8s/deployment-bitxhub.yaml', bitxhub_replicas)
+        # self.create_deployment_by_path_replicas('k8s/deployment-bitxhub.yaml', bitxhub_replicas)
+        d = {}
+        for i in range(bitxhub_replicas):
+            body = None
+            path = pathlib.Path('k8s/pod-bitxhub.yaml')
+            with path.open() as f:
+                body = yaml.safe_load(f)
+            body['metadata']['name'] = 'bitxhub-{}'.format(i)
+            body['spec']['containers'][0]['name'] = 'bitxhub-{}'.format(i)
+            body['spec']['containers'][0]['args'] = ['123{}'.format(i)]
+            
+            # fa = open("test.yaml", "w")
+            # fa.write(yaml.dump(body))
+            # return
+
+            api_instance = client.CoreV1Api()
+            api_instance.create_namespaced_pod(self.namespace, body)
+            d['bitxhub-{}'.format(i)] = {
+                'bitxhubId': '123{}'.format(i)
+            }
+        json.dump(d, open("graph_{}.json".format(self.namespace), "w"), indent=4)
+
+
         
     def create(self):
         # self.create_accounts()
@@ -316,7 +338,9 @@ class PrivateNetwork:
         print(nodeIpList)
 
         pier_json = {}
-        graph_json = {}
+        graph_json = None
+        with open("graph_{}".format(self.namespace)) as f:
+            graph_json = json.load(f)
         graph = config["graph"]
         for i in range(len(graph)):
             subGraph = graph[i]
@@ -328,11 +352,14 @@ class PrivateNetwork:
             for j in range(ethNum):
                 ethIps.append(ethIpList.pop())
                 ethNames.append(ethNameList.pop())
-            graph_json[bitxhubName] = {
-                "chainNameList": ethNames.copy(),
-                "chainIpList": ethIps.copy(),
-                "pierPrefixName": "pier-{}".format(i)
-            }
+            graph_json[bitxhubName]["chainNameList"] = ethNames.copy()
+            graph_json[bitxhubName]["chainIpList"] = ethIps.copy()
+            graph_json[bitxhubName]["pierPrefixName"] = "pier-{}".format(i)
+            # graph_json[bitxhubName] = {
+            #     "chainNameList": ethNames.copy(),
+            #     "chainIpList": ethIps.copy(),
+            #     "pierPrefixName": "pier-{}".format(i)
+            # }
 
             for j, ethIp in enumerate(ethIps):
                 mount_pier = osp.join(config["base"], "mount_pier{}{}".format(i, j))
