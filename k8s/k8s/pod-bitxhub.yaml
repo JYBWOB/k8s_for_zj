@@ -7,7 +7,7 @@ spec:
   - name: bitxhub
     image: jybwob/bitxhub-in-one:v5
     imagePullPolicy: IfNotPresent
-    command: ['make', 'cluster']
+    command: ['bash', 'cluster.sh']
     args: ['1234']
     # ports:
     # - name: rpc
