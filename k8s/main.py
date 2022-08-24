@@ -575,7 +575,7 @@ def main():
     parser.add_argument('--name', dest='name', required=True)
     parser.add_argument('--light', dest='light', action='store_true', default=False)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--create', dest='create', action='store_true', default=False)
+    group.add_argument('--create', dest='create', default="")
     group.add_argument('--delete', dest='delete', action='store_true', default=False)
     group.add_argument('--deploy', dest='deploy', action='store_true', default=False)
     group.add_argument('--pier', dest='pier', default="")
@@ -589,9 +589,9 @@ def main():
         logging.info('Starting Geth in Private Network')
         n = PrivateNetwork(args.name)
     
-    if args.create:
+    if args.create != "":
         logger.info(f'Creating "{args.name}"')
-        n.create_by_config("config.json")
+        n.create_by_config(args.create)
     elif args.delete:
         logger.info(f'Deleting "{args.name}"')
         n.delete()
