@@ -9,6 +9,15 @@ spec:
     imagePullPolicy: IfNotPresent
     command: ['bash', 'cluster.sh']
     args: ['1234']
+    ports:
+    - name: p1
+      containerPort: 60011
+    - name: p2
+      containerPort: 60012
+    - name: p3
+      containerPort: 60013
+    - name: p4
+      containerPort: 60014
     # ports:
     # - name: rpc
     #   containerPort: 8545

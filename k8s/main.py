@@ -281,7 +281,7 @@ class PrivateNetwork:
             ethNameList = [ethItem.split()[0] for ethItem in ethInfo.split('\n') if ethItem != '']
             print(ethIpList)
             print(ethNameList)
-            if "<none>" not in bitxhubIpList:
+            if "<none>" not in ethIpList:
                 break
             print("container starting...")
             time.sleep(1)
