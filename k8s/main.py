@@ -288,6 +288,7 @@ class PrivateNetwork:
 
 
         for i in range(bitxhub_replicas):
+            d['bitxhub-{}'.format(i)]['bitxhubIp'] = bitxhubIpList[i]
             fetch = graph[i]["eth"]
             ips = []
             names = []
@@ -332,6 +333,7 @@ class PrivateNetwork:
         appchainId = 0
         for bitxhubName, item in graph_json.items():
             bitxhubId = item["bitxhubId"]
+            bitxhubIp = item["bitxhubIp"]
             for ethIp in item["chainIpList"]:
                 print("handle ip: ", ethIp)
                 print("handle bitxhub_id: ", bitxhubId)
@@ -372,47 +374,55 @@ class PrivateNetwork:
             print(pier, "open failed")
             return
         
-        bitxhubInfo = os.popen("kubectl get pods -n {} -o wide | grep bitxhub".format(self.namespace)).read()
-        bitxhubIpList = [bitxhubItem.split()[-4] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
-        bitxhubNameList = [bitxhubItem.split()[0] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
-        print(bitxhubIpList)
-        print(bitxhubNameList)
+        # bitxhubInfo = os.popen("kubectl get pods -n {} -o wide | grep bitxhub".format(self.namespace)).read()
+        # bitxhubIpList = [bitxhubItem.split()[-4] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
+        # bitxhubNameList = [bitxhubItem.split()[0] for bitxhubItem in bitxhubInfo.split('\n') if bitxhubItem != '']
+        # print(bitxhubIpList)
+        # print(bitxhubNameList)
 
-        ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
-        ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
-        ethNameList = [ethItem.split()[0] for ethItem in ethInfo.split('\n') if ethItem != '']
-        print(ethIpList)
-        print(ethNameList)
+        # ethInfo = os.popen("kubectl get pods -n {} -o wide | grep geth".format(self.namespace)).read()
+        # ethIpList = [ethItem.split()[-4] for ethItem in ethInfo.split('\n') if ethItem != '']
+        # ethNameList = [ethItem.split()[0] for ethItem in ethInfo.split('\n') if ethItem != '']
+        # print(ethIpList)
+        # print(ethNameList)
 
         nodeInfo = os.popen("kubectl get nodes -o wide").read()
         nodeIpList = [nodeItem.split()[5] for nodeItem in nodeInfo.split('\n') if nodeItem != '' and "Ready" in nodeItem]
         print(nodeIpList)
 
         pier_json = {}
-        graph_json = None
-        with open("graph_{}".format(self.namespace)) as f:
-            graph_json = json.load(f)
-        graph = config["graph"]
-        for i in range(len(graph)):
-            subGraph = graph[i]
-            ethNum = subGraph["eth"]
-            bitxhubIp = bitxhubIpList.pop()
-            bitxhubName = bitxhubNameList.pop()
-            ethIps = []
-            ethNames = []
-            for j in range(ethNum):
-                ethIps.append(ethIpList.pop())
-                ethNames.append(ethNameList.pop())
-            graph_json[bitxhubName]["chainNameList"] = ethNames.copy()
-            graph_json[bitxhubName]["chainIpList"] = ethIps.copy()
-            graph_json[bitxhubName]["pierPrefixName"] = "pier-{}".format(i)
-            # graph_json[bitxhubName] = {
-            #     "chainNameList": ethNames.copy(),
-            #     "chainIpList": ethIps.copy(),
-            #     "pierPrefixName": "pier-{}".format(i)
-            # }
+        # graph_json = None
+        # with open("graph_{}".format(self.namespace)) as f:
+        #     graph_json = json.load(f)
+        # graph = config["graph"]
+        # for i in range(len(graph)):
+        #     subGraph = graph[i]
+        #     ethNum = subGraph["eth"]
+        #     bitxhubIp = bitxhubIpList.pop()
+        #     bitxhubName = bitxhubNameList.pop()
+        #     ethIps = []
+        #     ethNames = []
+        #     for j in range(ethNum):
+        #         ethIps.append(ethIpList.pop())
+        #         ethNames.append(ethNameList.pop())
+        #     graph_json[bitxhubName]["chainNameList"] = ethNames.copy()
+        #     graph_json[bitxhubName]["chainIpList"] = ethIps.copy()
+        #     graph_json[bitxhubName]["pierPrefixName"] = "pier-{}".format(i)
+        #     # graph_json[bitxhubName] = {
+        #     #     "chainNameList": ethNames.copy(),
+        #     #     "chainIpList": ethIps.copy(),
+        #     #     "pierPrefixName": "pier-{}".format(i)
+        #     # }
 
-            for j, ethIp in enumerate(ethIps):
+        graph_json = None
+        with open("graph_{}.json".format(self.namespace)) as f:
+            graph_json = json.load(f)
+
+        for i, (bitxhubName, item) in enumerate(graph_json.items()):
+            bitxhubIp = item["bitxhubIp"]
+            for j in range(len(item["chainIpList"])):
+                ethIp = item["chainIpList"][j]
+            #for j, ethIp in item["chainIpList"]:
                 mount_pier = osp.join(config["base"], "mount_pier{}{}".format(i, j))
                 cmd = "rm -rf {}".format(mount_pier)
                 os.system(cmd)
@@ -472,10 +482,10 @@ class PrivateNetwork:
                     "appchain_name": "eth{}{}".format(i, j),
                     "appchain_type": "ETH",
                     "appchain_ip": ethIp,
-                    }
+                }
 
         json.dump(pier_json, open("pier_{}.json".format(self.namespace), "w"), indent=4)
-        json.dump(graph_json, open("graph_{}.json".format(self.namespace), "w"), indent=4)
+        #json.dump(graph_json, open("graph_{}.json".format(self.namespace), "w"), indent=4)
     
     def register(self, configPath):
         config = None
