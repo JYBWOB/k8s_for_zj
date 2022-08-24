@@ -1,0 +1,11 @@
+[ether]
+addr = "ws://10.244.1.82:8546"
+name = "ether"
+contract_address = "0xc22813eFe3d04E65A7B2554615951Aa59418949f"
+key_path = "account.key"
+password = "password"
+min_confirm = 15
+timeout_height = 100
+timeout_period = 60
+offchain_addr = ""
+offchain_path = ""
