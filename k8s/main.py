@@ -685,14 +685,12 @@ class PrivateNetwork:
             unionIp = item["union_pier_ip"]
             
             mount_union_pier = osp.join(config["base"], "mount_union_pier{}".format(i))
-            
-            
             pier_toml = toml.load(osp.join(mount_union_pier, "network.toml"))
+            
             hosts = ["/ip4/{}/tcp/{}/p2p/".format(unionIp, unionPort)]
             pier_toml['piers'][0]['hosts'] = hosts
             pier_toml['piers'][0]['pid'] = unionP2pId
             pier_toml['piers'].append(root_struct)
-            # pprint(pier_toml)
 
             toml.dump(pier_toml, open(osp.join(mount_union_pier, "network.toml"), "w"))
 
@@ -722,17 +720,98 @@ class PrivateNetwork:
             print("\t", cmd)
             os.system(cmd)
 
-            def exec_cmd(pierName, cmd):
-                cmd = "kubectl exec -it {} -n {} -- \"{}\"".format(pierName, self.namespace, cmd)
-                print("\t", cmd)
+            cmd = "cp {} {}".format("~/union.validators", mount_union_pier)
+            print(cmd)
+            os.system(cmd)
 
-                return os.popen(cmd).read()
+            cmd = "kubectl cp {}/union.validators {}:/root/.pier/ -n {}".format(mount_union_pier, unionPierName, self.namespace)
+            print("\t", cmd)
+            os.system(cmd)
 
-            cmd = "pier start"
-            # cmd = "pier start > log.txt &"
-            exec_cmd(unionPierName, cmd)
+            cmd = 'kubectl exec {} -n {} -- sh -c "pier start > log.txt &"'.format(unionPierName, self.namespace)
+            print("\t", cmd)
+            os.system(cmd)
+        
+
+    def union_pier_register(self, configPath):
+        config = None
+        with open(configPath) as f:
+            config = json.load(f)
+        if config is None:
+            print(configPath, "open failed")
+            return
+        bitxhub_path = config["bitxhub"]
+
+        union_json = None
+        with open("union_{}.json".format(self.namespace)) as f:
+            union_json = json.load(f)
+        if union_json is None:
+            print("union_{}.json".format(self.namespace), "open failed")
+            return        
+
+        def exec_cmd(pierName, cmd):
+            cmd = "kubectl exec -it {} -n {} -- {}".format(pierName, self.namespace, cmd)
+            print("\t", cmd)
+
+            return os.popen(cmd).read()
+
+        rootBitxhubName = union_json["union-0"]["bitxhubName"]
+        rootBitxhubId = union_json["union-0"]["bitxhubId"]
+        rootAppchainName = "bitxhub_{}".format(rootBitxhubId)
+            
+        for i, (unionName, item) in enumerate(union_json.items()):
+            bitxhubName = item["bitxhubName"]
+    
+            cmd = "kubectl cp {} {}:/usr/local/bin -n {}".format(bitxhub_path, unionName, self.namespace)
+            print("\t", cmd)
+            os.system(cmd)
+
+            cmd = "bitxhub key show --path /root/.pier/key.json | grep address"
+            pierId = exec_cmd(unionName, cmd).split()[-1]
+
+            # 中继链转账
+            cmd = "bitxhub client transfer --key /root/bitxhub/scripts/build/node1/key.json --to {} --amount 100000000000000000".format(pierId)
+            print("\t", exec_cmd(bitxhubName, cmd))
 
 
+            if i != 0:
+                cmd = 'pier --repo /root/.pier appchain register --appchain-id "{}" --name "{}"' \
+                    ' --type "{}" --trustroot /root/.pier/union.validators ' \
+                    ' --broker "0x0000000000000000000000000000000000000019"' \
+                    ' --desc "desc" --master-rule "0x00000000000000000000000000000000000000a2"'\
+                    ' --rule-url "http://github.com" --admin {}'\
+                    ' --reason "reason"'.format(
+                            rootBitxhubId, 
+                            rootAppchainName, 
+                            "relaychain",
+                            pierId
+                            )
+                print("\t", exec_cmd(unionName, cmd))
+
+                for nodeId in range(1, 4):
+                    cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-0 --info approve --reason approve'.format(nodeId, pierId)
+                    print("\t", exec_cmd(bitxhubName, cmd))
+
+            else:
+                for j in range(1, len(union_json.items())):
+                    bitxhubId = union_json["union-{}".format(j)]["bitxhubId"]
+                    appchainName = "bitxhub_{}".format(bitxhubId)
+                    cmd = 'pier --repo /root/.pier appchain register --appchain-id "{}" --name "{}"' \
+                            ' --type "{}" --trustroot /root/.pier/union.validators ' \
+                            ' --broker "0x0000000000000000000000000000000000000019"' \
+                            ' --desc "desc" --master-rule "0x00000000000000000000000000000000000000a2"'\
+                            ' --rule-url "http://github.com" --admin {}'\
+                            ' --reason "reason"'.format(
+                                bitxhubId, 
+                                appchainName, 
+                                "relaychain",
+                                pierId
+                                )
+                    print("\t", exec_cmd(unionName, cmd))
+
+                    for nodeId in range(1, 4):
+                        cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-0 --info approve --reason approve'.format(nodeId, pierId)
+                        print("\t", exec_cmd(bitxhubName, cmd))
 
 
 
@@ -750,6 +829,7 @@ def main():
     group.add_argument('--union', dest='union', default="")
     group.add_argument('--unionConfig', dest='config', default="")
     group.add_argument('--unionStart', dest='start', default="")
+    group.add_argument('--unionRegister', dest='register', default="")
     args = parser.parse_args()
 
     if args.light:
@@ -773,6 +853,8 @@ def main():
         n.create_deployment_union_network_config(args.config)
     elif args.start != "":
         n.create_deployment_union_start(args.start)
+    elif args.register != "":
+        n.union_pier_register(args.register)
     elif args.deploy:
         n.deploy()
     elif args.register != "":
