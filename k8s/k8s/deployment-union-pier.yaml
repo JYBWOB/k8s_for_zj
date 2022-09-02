@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pier
+spec:
+  containers:
+  - name: pier
+    image: jybwob/pier:v1.23.0
+    imagePullPolicy: IfNotPresent
+    # command: ['pier', 'start']
+    
+    command: ['tail', '-f', '/dev/null']
+    ports:
+    - name: rpc
+      containerPort: 4343
+    volumeMounts:
+    - name: union-0-0
+      mountPath: /root/.pier
+      readOnly: false
+
+  volumes: #定义一组挂载设备  
+    - name: union-0-0
+      hostPath:  
+        path: /root/.union-pier
+        type: Directory

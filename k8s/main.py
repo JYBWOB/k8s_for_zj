@@ -10,6 +10,7 @@ import os.path as osp
 import json
 import os
 import toml
+import time 
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
@@ -261,7 +262,6 @@ class PrivateNetwork:
                 'bitxhubId': '123{}'.format(i)
             }
 
-        import time 
         while True:
             # read bitxhub data from pods
             bitxhubInfo = os.popen("kubectl get pods -n {} -o wide | grep bitxhub".format(self.namespace)).read()
@@ -566,6 +566,173 @@ class PrivateNetwork:
                 cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-1 --info approve --reason approve'.format(nodeId, pierId)
                 print("\t", exec_cmd(bitxhubName, cmd))
 
+    def create_deployment_union_pier(self, pier):
+        path = pathlib.Path('k8s/deployment-union-pier.yaml')
+        with path.open() as f:
+            body = yaml.safe_load(f)
+
+        config = None
+        with open(pier) as f:
+            config = json.load(f)
+
+        if config is None:
+            print(pier, "open failed")
+            return
+
+        nodeInfo = os.popen("kubectl get nodes -o wide").read()
+        nodeIpList = [nodeItem.split()[5] for nodeItem in nodeInfo.split('\n') if nodeItem != '' and "Ready" in nodeItem]
+        print(nodeIpList)
+
+        union_pier_json = {}
+        graph_json = None
+        with open("graph_{}.json".format(self.namespace)) as f:
+            graph_json = json.load(f)
+
+        for i, (bitxhubName, item) in enumerate(graph_json.items()):
+            bitxhubIp = item["bitxhubIp"]
+            bitxhubId = item["bitxhubId"]
+            
+            mount_union_pier = osp.join(config["base"], "mount_union_pier{}".format(i))
+            cmd = "rm -rf {}".format(mount_union_pier)
+            os.system(cmd)
+            cmd = "mkdir -p {} && {} --repo={} init union --addPier 127.0.0.1:4343#fjksdd".format(mount_union_pier, config['pier'], mount_union_pier)
+            os.system(cmd)
+            cmd = "{} --repo={} p2p id".format(config['pier'], mount_union_pier)
+            unionPierId = os.popen(cmd).read()
+            #cmd = "cp -r {} {} && cp -r {} {}".format(config['plugins'], osp.join(mount_union_pier, 'plugins'), config['ether'], osp.join(mount_union_pier, 'ether'))
+            #os.system(cmd)
+            deploy_json = json.load(open("deploy_{}.json".format(self.namespace)))
+            addrs = [bitxhubIp + ':6001{}'.format(i) for i in range(1, 5)]
+            pier_toml = toml.load(osp.join(mount_union_pier, "pier.toml"))
+            pier_toml['mode']['relay']['addrs'] = addrs
+            pier_toml['mode']['relay']['timeout_limit'] = "10s"
+            pier_toml['mode']['union']['addrs'] = addrs
+            print(toml.dumps(pier_toml))
+            toml.dump(pier_toml, open(osp.join(mount_union_pier, "pier.toml"), "w"))
+
+
+            for nodeIp in nodeIpList:
+                if nodeIp == "10.206.0.7":
+                    continue
+                cmd = "sshpass -p {} scp -r {} {}@{}:{}".format(config["passwd"], mount_union_pier, config["user"], nodeIp, config["base"])
+                print(cmd)
+                os.system(cmd)
+
+            body['metadata']['name'] = "union-{}".format(i)
+
+            body['spec']['containers'][0]['volumeMounts'][0]['name'] = "union-{}".format(i)
+            body['spec']['volumes'][0]['name'] = "union-{}".format(i)
+            body['spec']['volumes'][0]['hostPath']['path'] = mount_union_pier
+            body['spec']['volumes'][0]['hostPath']['type'] = "Directory"
+
+            body['spec']['containers'][0]['name'] = "union-{}".format(i)
+        
+            api_instance = client.CoreV1Api()
+            api_instance.create_namespaced_pod(self.namespace, body)
+
+            union_pier_json["union-{}".format(i)] = {
+                "bitxhubName": bitxhubName, 
+                "bitxhubIp": bitxhubIp, 
+                "bitxhubId": bitxhubId,
+                #"union_pier_ip": unionPierIpList[i],
+                "union_pier_port": "4343",
+                "union_pier_p2p_id":unionPierId.strip(),
+            }
+        while True:
+            unionPierInfo = os.popen("kubectl get pods -n {} -o wide | grep union".format(self.namespace)).read()
+            unionPierIpList = [unionPierItem.split()[-4] for unionPierItem in unionPierInfo.split('\n') if unionPierItem != '']
+            unionPierNameList = [unionPierItem.split()[0] for unionPierItem in unionPierInfo.split('\n') if unionPierItem != '']
+            print(unionPierIpList)
+            print(unionPierNameList)
+            if "<none>" not in unionPierIpList:
+                break
+            print("container starting...")
+            time.sleep(1)
+
+        for i in range(len(unionPierIpList)):
+            index = unionPierNameList.index("union-{}".format(i))
+            union_pier_json["union-{}".format(i)]["union_pier_ip"] = unionPierIpList[index]
+
+        json.dump(union_pier_json, open("union_{}.json".format(self.namespace), "w"), indent=4)
+
+    def create_deployment_union_network_config(self, pier):
+        config = None
+        with open(pier) as f:
+            config = json.load(f)
+
+        if config is None:
+            print(pier, "open failed")
+            return
+
+        union_json = None
+        with open("union_{}.json".format(self.namespace)) as f:
+            union_json = json.load(f)
+
+        rootPierIp = union_json["union-0"]["union_pier_ip"]
+        rootUnionPort = union_json["union-0"]["union_pier_port"]
+        root_mount_union_pier = osp.join(config["base"], "mount_union_pier0")
+        root_pier_toml = toml.load(osp.join(root_mount_union_pier, "network.toml"))
+        root_hosts = ["/ip4/{}/tcp/{}/p2p/".format(rootPierIp, rootUnionPort)]
+        root_pier_toml['piers'][0]['hosts'] = root_hosts
+        root_pier_toml['piers'][0]['pid'] = union_json["union-0"]["union_pier_p2p_id"]
+        root_struct = {"hosts": root_hosts, "pid": union_json["union-0"]["union_pier_p2p_id"]}
+
+        for i, (unionName, item) in enumerate(union_json.items()):
+            if i == 0:
+                continue
+            unionPort = item["union_pier_port"]
+            unionP2pId = item["union_pier_p2p_id"]
+            unionIp = item["union_pier_ip"]
+            
+            mount_union_pier = osp.join(config["base"], "mount_union_pier{}".format(i))
+            
+            
+            pier_toml = toml.load(osp.join(mount_union_pier, "network.toml"))
+            hosts = ["/ip4/{}/tcp/{}/p2p/".format(unionIp, unionPort)]
+            pier_toml['piers'][0]['hosts'] = hosts
+            pier_toml['piers'][0]['pid'] = unionP2pId
+            pier_toml['piers'].append(root_struct)
+            # pprint(pier_toml)
+
+            toml.dump(pier_toml, open(osp.join(mount_union_pier, "network.toml"), "w"))
+
+            root_pier_toml['piers'].append(
+                pier_toml['piers'][0]
+            )
+        toml.dump(root_pier_toml, open(osp.join(root_mount_union_pier, "network.toml"), "w"))
+
+    def create_deployment_union_start(self, pier):
+        config = None
+        with open(pier) as f:
+            config = json.load(f)
+
+        if config is None:
+            print(pier, "open failed")
+            return
+
+        union_json = None
+        with open("union_{}.json".format(self.namespace)) as f:
+            union_json = json.load(f)
+
+        for i in range(len(union_json.items())):
+            mount_union_pier = osp.join(config["base"], "mount_union_pier{}".format(i))
+            unionPierName = "union-{}".format(i)
+            # cmd = "kubectl cp {} {}:/usr/local/bin -c {} -n {}".format(bitxhub_path, pierName, pierName, self.namespace)
+            cmd = "kubectl cp {}/network.toml {}:/root/.pier/ -n {}".format(mount_union_pier, unionPierName, self.namespace)
+            print("\t", cmd)
+            os.system(cmd)
+
+            def exec_cmd(pierName, cmd):
+                cmd = "kubectl exec -it {} -n {} -- \"{}\"".format(pierName, self.namespace, cmd)
+                print("\t", cmd)
+
+                return os.popen(cmd).read()
+
+            cmd = "pier start"
+            # cmd = "pier start > log.txt &"
+            exec_cmd(unionPierName, cmd)
+
+
 
 
 
@@ -580,6 +747,9 @@ def main():
     group.add_argument('--deploy', dest='deploy', action='store_true', default=False)
     group.add_argument('--pier', dest='pier', default="")
     group.add_argument('--register', dest='register', default="")
+    group.add_argument('--union', dest='union', default="")
+    group.add_argument('--unionConfig', dest='config', default="")
+    group.add_argument('--unionStart', dest='start', default="")
     args = parser.parse_args()
 
     if args.light:
@@ -597,6 +767,12 @@ def main():
         n.delete()
     elif args.pier != "":
         n.create_deployment_pier(args.pier)
+    elif args.union != "":
+        n.create_deployment_union_pier(args.union)
+    elif args.config != "":
+        n.create_deployment_union_network_config(args.config)
+    elif args.start != "":
+        n.create_deployment_union_start(args.start)
     elif args.deploy:
         n.deploy()
     elif args.register != "":
