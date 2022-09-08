@@ -21,13 +21,13 @@ spec:
     # ports:
     # - name: rpc
     #   containerPort: 8545
-  #   volumeMounts:
-  #   - name: bitxhub-0-0
-  #     mountPath: /root/.pier
-  #     readOnly: false
+    volumeMounts:
+    - name: bitxhub-0-0
+      mountPath: /usr/local/bin/bitxhub
+      readOnly: false
 
-  # volumes: #定义一组挂载设备  
-  #   - name: bitxhub-0-0
-  #     hostPath:  
-  #       path: /root/.pier/
-  #       type: Directory
+  volumes: #定义一组挂载设备  
+    - name: bitxhub-0-0
+      hostPath:  
+        path: /home/ubuntu/bitxhub
+        type: File

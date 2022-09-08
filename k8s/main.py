@@ -227,6 +227,17 @@ class PrivateNetwork:
         self.delete_namespace()
 
     def create_by_config(self, config_path):
+        nameInfo = os.popen("kubectl get namespaces").read()
+        if self.namespace in nameInfo:
+            deleteFlag = input("namespace {} already exists, delete? y/n：".format(self.namespace))
+            if deleteFlag != "y" and deleteFlag != "yes":
+                return
+            self.delete_namespace()
+            while self.namespace in nameInfo:
+                print("waiting ...")
+                time.sleep(1)
+                nameInfo = os.popen("kubectl get namespaces").read()
+                
         self.create_namespace()
         self.create_service()
 
@@ -234,24 +245,47 @@ class PrivateNetwork:
         with open(config_path) as f:
             config = json.load(f)
         if config is None:
-            print(pier, "open failed")
+            print(config_path, "open failed")
             return
         graph = config["graph"]
         bitxhub_replicas = len(graph)
         eth_replicas = sum(p["eth"] for p in graph)
 
+        nodeInfo = os.popen("kubectl get nodes -o wide").read()
+        nodeIpList = [nodeItem.split()[5] for nodeItem in nodeInfo.split('\n') if nodeItem != '' and "Ready" in nodeItem]
+        print(nodeIpList)
+
         self.create_deployment_by_path_replicas('k8s/deployment-ether.yaml', eth_replicas)
         # self.create_deployment_by_path_replicas('k8s/deployment-bitxhub.yaml', bitxhub_replicas)
+        for nodeIp in nodeIpList:
+            if nodeIp == "10.206.0.7":
+                continue
+
+            cmd = "sshpass -p {} scp -r {} {}@{}:{}".format(config["passwd"], config["root_bitxhub"], config["user"], nodeIp, config["base"])
+            print(cmd)
+            os.system(cmd)
+            
+            cmd = "sshpass -p {} scp -r {} {}@{}:{}".format(config["passwd"], config["bitxhub"], config["user"], nodeIp, config["base"])
+            print(cmd)
+            os.system(cmd)
+
         d = {}
         for i in range(bitxhub_replicas):
             body = None
             path = pathlib.Path('k8s/pod-bitxhub.yaml')
             with path.open() as f:
                 body = yaml.safe_load(f)
+
+            
             body['metadata']['name'] = 'bitxhub-{}'.format(i)
             body['spec']['containers'][0]['name'] = 'bitxhub-{}'.format(i)
             body['spec']['containers'][0]['args'] = ['123{}'.format(i)]
-            
+            # body['spec']['containers'][0]['volumeMounts'][0]["name"]= ['123{}'.format(i)]
+            if i == 0:
+                body['spec']['volumes'][0]['hostPath']['path'] = osp.join(config["base"], "root_bitxhub")
+            else:
+                body['spec']['volumes'][0]['hostPath']['path'] =  osp.join(config["base"], "bitxhub")
+
             # fa = open("test.yaml", "w")
             # fa.write(yaml.dump(body))
             # return
@@ -595,12 +629,17 @@ class PrivateNetwork:
             mount_union_pier = osp.join(config["base"], "mount_union_pier{}".format(i))
             cmd = "rm -rf {}".format(mount_union_pier)
             os.system(cmd)
-            cmd = "mkdir -p {} && {} --repo={} init union --addPier 127.0.0.1:4343#fjksdd".format(mount_union_pier, config['pier'], mount_union_pier)
+
+            if i == 0:
+                pier_path = config['root_pier']
+            else:
+                pier_path = config['pier']
+
+            cmd = "mkdir -p {} && {} --repo={} init union --addPier 127.0.0.1:4343#fjksdd".format(mount_union_pier, pier_path, mount_union_pier)
             os.system(cmd)
-            cmd = "{} --repo={} p2p id".format(config['pier'], mount_union_pier)
+            cmd = "{} --repo={} p2p id".format(pier_path, mount_union_pier)
             unionPierId = os.popen(cmd).read()
-            #cmd = "cp -r {} {} && cp -r {} {}".format(config['plugins'], osp.join(mount_union_pier, 'plugins'), config['ether'], osp.join(mount_union_pier, 'ether'))
-            #os.system(cmd)
+           
             deploy_json = json.load(open("deploy_{}.json".format(self.namespace)))
             addrs = [bitxhubIp + ':6001{}'.format(i) for i in range(1, 5)]
             pier_toml = toml.load(osp.join(mount_union_pier, "pier.toml"))
@@ -728,6 +767,13 @@ class PrivateNetwork:
             print("\t", cmd)
             os.system(cmd)
 
+            if i == 0:
+                cmd = "kubectl cp {} {}:/usr/local/bin/pier -n {}".format(config["root_pier"], unionPierName, self.namespace)
+            else:
+                cmd = "kubectl cp {} {}:/usr/local/bin/pier -n {}".format(config["pier"], unionPierName, self.namespace)
+            print("\t", cmd)
+            os.system(cmd)
+
             cmd = 'kubectl exec {} -n {} -- sh -c "pier start > log.txt &"'.format(unionPierName, self.namespace)
             print("\t", cmd)
             os.system(cmd)
@@ -740,7 +786,6 @@ class PrivateNetwork:
         if config is None:
             print(configPath, "open failed")
             return
-        bitxhub_path = config["bitxhub"]
 
         union_json = None
         with open("union_{}.json".format(self.namespace)) as f:
@@ -761,8 +806,13 @@ class PrivateNetwork:
             
         for i, (unionName, item) in enumerate(union_json.items()):
             bitxhubName = item["bitxhubName"]
+
+            if i == 0:
+                bitxhub_path = config["root_bitxhub"]
+            else:
+                bitxhub_path = config["bitxhub"]
     
-            cmd = "kubectl cp {} {}:/usr/local/bin -n {}".format(bitxhub_path, unionName, self.namespace)
+            cmd = "kubectl cp {} {}:/usr/local/bin/bitxhub -n {}".format(bitxhub_path, unionName, self.namespace)
             print("\t", cmd)
             os.system(cmd)
 
@@ -810,7 +860,7 @@ class PrivateNetwork:
                     print("\t", exec_cmd(unionName, cmd))
 
                     for nodeId in range(1, 4):
-                        cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-0 --info approve --reason approve'.format(nodeId, pierId)
+                        cmd = 'bitxhub --repo /root/bitxhub/scripts/build/node{} client governance vote --id {}-{} --info approve --reason approve'.format(nodeId, pierId, j-1)
                         print("\t", exec_cmd(bitxhubName, cmd))
 
 
@@ -829,7 +879,7 @@ def main():
     group.add_argument('--union', dest='union', default="")
     group.add_argument('--unionConfig', dest='config', default="")
     group.add_argument('--unionStart', dest='start', default="")
-    group.add_argument('--unionRegister', dest='register', default="")
+    group.add_argument('--unionRegister', dest='URegister', default="")
     args = parser.parse_args()
 
     if args.light:
@@ -853,8 +903,8 @@ def main():
         n.create_deployment_union_network_config(args.config)
     elif args.start != "":
         n.create_deployment_union_start(args.start)
-    elif args.register != "":
-        n.union_pier_register(args.register)
+    elif args.URegister != "":
+        n.union_pier_register(args.URegister)
     elif args.deploy:
         n.deploy()
     elif args.register != "":
